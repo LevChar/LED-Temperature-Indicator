@@ -1,24 +1,59 @@
-// Matrix pins
-int DIN = 3;
-int CS = 4;
-int CLK = 2;
+/**
+ * Project: LED Temperature Indicator.
+ * purpose: This Project is used for collection of the current environmental 
+			temperature and displaying it on a 8x8 LED display. 
+			The temperature is calculated according to the Steinhart–Hart equation,
+			based on samples of the resistance, taken from the thermistor.
+			Update rate is 0.1 seconds.
+ */
 
-int GREEN = 5; // Green LED pin
-int RED = 6; // Red LED pin
-int SWITCH_TEMP_BUTTON = 10; // Switch button pin
+/* ******************************************************************************* */
+
+/**
+  *  Basic settings & pin Configuration  *
+										 */
+
+typedef unsigned int Uint;
+
+// Matrix pins
+const Uint DIN = 3;
+const Uint CLK = 2;
+const Uint CS = 4;
+
+// Led pins
+const Uint GREEN = 5;
+const Uint RED = 6;
+
+// Switch button pin
+const Uint SWITCH_TEMP_BUTTON = 10; 
 
 // Thermistor pin
-int THERMISTOR_PIN = A0;
+const Uint THERMISTOR_PIN = A0;
 
-float LED_LIGHT_CHANGE_SENSITIVITY = 150;
+//Starting columns of the digits on the matrix
+const Uint LEFT_DIGIT = 0;
+const Uint RIGHT_DIGIT = 5;
 
-float R1 = 10000; // Thermistor resistor resistance
-float c1 = 0.001129148, c2 = 0.000234125, c3 = 0.0000000876741; // Steinhart-Hart coeficients for thermistor
+// Steinhart-Hart coeficients for thermistor & thermistor resistor resistance
+const float R1 = 10000; 
+const float c1 = 0.001129148;
+const float c2 = 0.000234125;
+const float c3 = 0.0000000876741;
 
-bool isFarenheit = false;
+// Variables used in calculations and in-display methods
+const Uint maxLedStrength = 255;
+const int decreaseInTempSensitivity = -1.8;
+const float ledLightChangeSensitivity = 150;
 float prevTempearature;
+bool isFarenheit = false;
 
-// The number of each column on the matrix (the first 8 bits)
+/* ******************************************************************************* */
+
+/**
+ * Bit encodings of led patterns (Basic scheme, digits, temp symbols) *
+																	  */
+
+The number of each column on the matrix (the first 8 bits)
 bool cols[][8] = {
   {0, 0, 0, 0, 0, 0, 0, 1}, // 1
   {0, 0, 0, 0, 0, 0, 1, 0}, // 2
@@ -30,7 +65,7 @@ bool cols[][8] = {
   {0, 0, 0, 0, 1, 0, 0, 0}, // 8
 };
 
-// The LEDs to turn on the matrix
+// LEDs pattern to turn on the matrix (used like a place holder for display updates)
 bool scheme[][8] = {
   {0, 0, 0, 1, 1, 1, 1, 1}, // Left-most column
   {0, 0, 0, 1, 0, 0, 0, 1},
@@ -78,6 +113,12 @@ bool celsiusPattern[][8] = {
   {0, 0, 1, 0, 0, 0, 1, 0} // Right-most column
 };
 
+/* ******************************************************************************* */
+
+/**
+ * Arduino Basic functions - Setup & Loop *
+										  */
+
 void setup() {
   pinMode(DIN, OUTPUT);
   pinMode(CS, OUTPUT);
@@ -96,51 +137,37 @@ void setup() {
 void loop() {
   int switch_button_state = digitalRead(SWITCH_TEMP_BUTTON);
 
-  if (switch_button_state == LOW) {
-    switchTemperatureUnit();
-
-    if (isFarenheit) {
-      prevTempearature = (prevTempearature * 9.0) / 5.0 + 32.0;
-    }
-    else {
-      prevTempearature = (prevTempearature - 32.0) * 5.0 / 9.0;
-    }
-  }
+  if (switch_button_state == LOW)
+	switchTemperatureUnit();
 
   float T = getCelciusTemperature();
+  
+  // Convert Celcius to Farenheit if needed
+  T = isFarenheit ? ((T * 9.0) / 5.0 + 32.0) : T ;
 
-  if (isFarenheit) {
-    T = (T * 9.0) / 5.0 + 32.0; // Convert Celcius to Farenheit
-  }
+  calcChangeByTempDiffAndTurnOnLEDs(T - prevTempearature);
 
-  turnLedsByTemperatureDifference(T - prevTempearature);
+  // Serial.println(T); // Print the temperature (for debug purposes)
 
-  Serial.println(T); // Print the temperature (for debug purposes)
-
-  if (T >= 0) { // Because negative temperature cannot be shown on the matrix
-    int intTemp = T; // The integer part of the temperature
-    double tempFraction = T - intTemp; // The fractional part of the temperature
+  // Negative temperature cannot be shown on the matrix
+  if (T >= 0) { 
+	//Temp calculation for fraction status bar
+    int intTemp = T; 				   // The integer part
+    double tempFraction = T - intTemp; // The fractional part
     
-    intTemp -= (intTemp / 100) * 100; // Keep only the 2 right digits of the temperature
+	// Keep only the 2 list significant digits of the temperature 
+	// (used for displaing farenheit temperatures above 100 degrees).
+    intTemp -= (intTemp / 100) * 100; 
 
-    setLeftDigit(intTemp / 10); // Set the left digit on the matrix
-    setRightDigit(intTemp % 10); // Set the right digit on the matrix
+	// Update scheme matrix with new temperature
+    setDigit(LEFT_DIGIT, intTemp / 10);  // Left digit
+    setDigit(RIGHT_DIGIT, intTemp % 10); // Right digit
 
-    // Set the size of the line at the bottom of the matrix
-    if (tempFraction <= 0.25) {
-      setQuarters(1);
-    }
-    else if (tempFraction <= 0.5) {
-      setQuarters(2);
-    }
-    else if (tempFraction <= 0.75) {
-      setQuarters(3);
-    }
-    else {
-      setQuarters(4);
-    }
-
-    // Check whether the second row from the bottom should be turned on
+    // update fraction status bar in scheme matrix
+	setQuarters(tempFraction * 4);
+   
+	// In farenheit mode, update the second status bar (one line before the last 
+	// in scheme matrix) to fully loaded state to indicate temperature above 100
     if (T >= 100) {
       setSecondRow(true);
     }
@@ -148,16 +175,47 @@ void loop() {
       setSecondRow(false);
     }
 
-    showScheme(); // Show the new temperature on the matrix
-    
-    prevTempearature = T; // Save the current temperature to compare with the next measured temperature
+	// Show the updated temperature on the matrix
+    showScheme(); 
+	
+	// Save current temperature for comparison with next measured temperature
+    prevTempearature = T; 
   }
 
   delay(100);
 }
 
+/* ******************************************************************************* */
+
 /**
- * Initialize matrix configurations
+ * Low level functions, implementing cummunication with MAX7219 LED Display Driver *
+																				   */
+
+/**
+ * Write 1 bit to the buffer.
+ */
+void writeBit(bool b) {
+  digitalWrite(DIN, b);
+  digitalWrite(CLK, LOW);
+  digitalWrite(CLK, HIGH);
+}
+
+/**
+ * Latch the entire buffer.
+ */
+void latchBuf() {
+  digitalWrite(CS, LOW);
+  digitalWrite(CS, HIGH);
+}
+
+/* ******************************************************************************* */
+
+/**
+ * Matrix initialization and display functions *
+											   */
+
+/**
+ * Initialize matrix configuration.
  */
 void initMatrix() {
   // Set registers: decode mode, scan limit, and shutdown (0x900, 0xB07, 0xC01)
@@ -167,6 +225,7 @@ void initMatrix() {
   writeBit(HIGH);
   for (int i = 0; i < 8; i++) writeBit(LOW);
   latchBuf();
+  
   for (int i = 0; i < 4; i++) writeBit(LOW);
   writeBit(HIGH);
   writeBit(LOW);
@@ -175,6 +234,7 @@ void initMatrix() {
   for (int i = 0; i < 5; i++) writeBit(LOW);
   for (int i = 0; i < 3; i++) writeBit(HIGH);
   latchBuf();
+  
   for (int i = 0; i < 4; i++) writeBit(LOW);
   for (int i = 0; i < 2; i++) writeBit(HIGH);
   for (int i = 0; i < 2; i++) writeBit(LOW);
@@ -184,32 +244,18 @@ void initMatrix() {
 }
 
 /**
- * Write 1 bit to the buffer
- */
-void writeBit(bool b) {
-  digitalWrite(DIN, b);
-  digitalWrite(CLK, LOW);
-  digitalWrite(CLK, HIGH);
-}
-
-/**
- * Latch the entire buffer
- */
-void latchBuf() {
-  digitalWrite(CS, LOW);
-  digitalWrite(CS, HIGH);
-}
-
-/**
- * Write the scheme to the matrix
+ * Write the scheme to the matrix.
  */
 void showScheme() {
-  for (int i = 0; i < 8; i++) { // For each column of the matrix ////////////////////////////////put num of lines/cols in constant
-    for (int j = 0; j < 8; j++) { // Write the number of the column (the first 8 bits)
+  // Repeat for each of the 8 columns of the matrix
+  for (int i = 0; i < 8; i++) { 
+	// Write column # to the buffer (the first 8 bits)
+    for (int j = 0; j < 8; j++) { 
       writeBit(cols[i][j]);
     }
-
-    for (int k = 0; k < 8; k++) { // Write which LEDs to turn on in each column (the last 8 bits)
+	
+	// Write which LEDs to turn on the column (the last 8 bits)
+    for (int k = 0; k < 8; k++) { 
       writeBit(scheme[i][k]);
     }
 
@@ -217,52 +263,108 @@ void showScheme() {
   }
 }
 
+/* ******************************************************************************* */
+
 /**
- * Copy the digit pattern from the digits array to the left digit on the scheme
+ *  Manipulation of Patterns for displaying on the matrix *
+													      */
+
+/**
+ * Copy digit pattern from the digits array to the appropriate digit location 
+ * on the scheme.
  */
-void setLeftDigit(int digit) {
+void setDigit(Uint digitLocation, int digit) {
   for (int i = 0; i < 5; i++) {
-    scheme[0][i + 3] = digits[digit][0][i];
-    scheme[1][i + 3] = digits[digit][1][i];
-    scheme[2][i + 3] = digits[digit][2][i];
+    scheme[digitLocation + 0][i + 3] = digits[digit][0][i];
+    scheme[digitLocation + 1][i + 3] = digits[digit][1][i];
+    scheme[digitLocation + 2][i + 3] = digits[digit][2][i];
   }
 }
 
 /**
- * Copy the digit pattern from the digits array to the right digit on the scheme
- */
-void setRightDigit(int digit) {
-  for (int i = 0; i < 5; i++) {
-    scheme[5][i + 3] = digits[digit][0][i];
-    scheme[6][i + 3] = digits[digit][1][i];
-    scheme[7][i + 3] = digits[digit][2][i];
-  }
-}
-
-/**
- * Turn on the line at the bottom of the matrix.
- * quarters=the amount of quarters of the line to show
+ * Turn on the status bar at the bottom of the matrix
+ * according to the quarters value (0.00 - 0.25 - 0.50 - 1.00).
  */
 void setQuarters(int quarters) {
+  
+  //Clear previous status bar data
+  for (int i = 0; i < 8 ; i++) {
+    scheme[i][0] = 0;
+  }
+  
+  //Set current status bar data
   for (int i = 0; i < quarters; i++) {
     scheme[i * 2][0] = 1;
     scheme[i * 2 + 1][0] = 1;
   }
 
-  for (int i = 0; i < 4 - quarters; i++) {
-    scheme[7 - i * 2][0] = 0;
-    scheme[6 - i * 2][0] = 0;
-  }
+  
 }
 
 /**
- * Turn on or off the second line from the bottom of the matrix.
+ * Turn on/off the second line from the bottom of the matrix.
  * show=true to turn on, show=false to turn off.
  */
 void setSecondRow(bool show) {
   for (int i = 0; i < 8; i++) {
     scheme[i][1] = show;
   }
+}
+
+/**
+ * Show temperature unit symbol
+ */
+void showTempSymbol(bool symbolMatrix[8][8]) {
+  // Repeat for each of the 8 columns of the matrix
+  for (int i = 0; i < 8; i++) {
+	// Write the LEDs to turn on in each column (the last 8 bits)
+    for (int k = 0; k < 8; k++) { 
+      scheme[i][k] = symbolMatrix[i][k];
+    }
+  }
+  
+  showScheme();
+}
+
+/**
+ * Turn off 4th & 5th column from the left and the 3rd line from the bottom
+ * (which might be turned on after showing the symbol of the temperature unit
+ * and not overridden by the temperature number)
+ */
+void resetMiddleColsAndRows() {
+  for (int i = 0; i < 8; i++) {
+    scheme[3][i] = 0;
+	scheme[4][i] = 0;
+  }
+  
+  for (int i = 0; i < 8; i++) {
+    scheme[i][2] = 0;
+  }
+}
+
+/* ******************************************************************************* */
+
+/**
+ *  Temperature calculation & switching between unints(Celsius & Farenheit)*
+																		   */
+													   
+/**
+ * Measure the current temperature
+ */
+float getCelciusTemperature() {
+  int Vo = analogRead(THERMISTOR_PIN);
+  
+  // Calculate resistance on thermistor
+  float R2 = R1 * (1023.0 / (float)Vo - 1.0); 
+  float logR2 = log(R2);
+  
+  // Temperature in Kelvin
+  float T = (1.0 / (c1 + c2 * logR2 + c3 * logR2 * logR2 * logR2)); 
+  
+  // Convert Kelvin to Celsius
+  T = T - 273.15; 
+
+  return T;
 }
 
 /**
@@ -274,10 +376,12 @@ void switchTemperatureUnit()
 
   if (isFarenheit)
   {
+	prevTempearature = (prevTempearature * 9.0) / 5.0 + 32.0;
     showTempSymbol(farenheitPattern);
   }
   else
   {
+	prevTempearature = (prevTempearature - 32.0) * 5.0 / 9.0;
     showTempSymbol(celsiusPattern);
   }
 
@@ -285,77 +389,51 @@ void switchTemperatureUnit()
   digitalWrite(RED, LOW);
 
   delay(500);
-  resetMiddleCols(); // Turning off some cells that are not overridden by the temperature number
-}
-
-/**
- * Show temperature unit symbol
- */
-void showTempSymbol(bool symbolMatrix[8][8]) {
-  for (int i = 0; i < 8; i++) { // For each column of the matrix
-    for (int k = 0; k < 8; k++) { // Write which LEDs to turn on in each column (the last 8 bits)
-      scheme[i][k] = symbolMatrix[i][k];
-    }
-  }
-
-  showScheme();
-}
-
-/**
- * Turning off the 5th column from the left and the 3rd line from the bottom
- * (which might be turned on after showing the temperature unit symbol
- * and not overridden by the temperature number)
- */
-void resetMiddleCols() {
-  for (int i = 0; i < 8; i++) {
-    scheme[4][i] = 0;
-  }
   
-  for (int i = 0; i < 8; i++) {
-    scheme[i][2] = 0;
-  }
+  // Turn off columns and rows which are not used for displaying the temperature
+  resetMiddleColsAndRows(); 
+}
+
+/* ******************************************************************************* */
+
+/**
+ *  Manipulation of LEDs according changes in temperature  *
+														   */
+/**
+ * Calculate the intensity of the change between currently measured
+ * temperature and previously measured temperature.
+ * ledLightChangeSensitivity & decreaseInTempSensitivity are coeficients 
+ * which can be adjusted for specific LED brand and the desire effects.
+ */
+void calcChangeByTempDiffAndTurnOnLEDs(float tempDiff) {
+  float ledStrength = tempDiff * ledLightChangeSensitivity;
+  ledStrength = < 0 ? (ledStrength * decreaseInTempSensitivity) : ledStrength;
+  ledStrength = ledStrength > maxLedStrength ? : maxLedStrength : ledStrength;
+  turnLedsWithDiffStrength(tempDiff, ledStrength);
 }
 
 /**
- * Turn the green or the red LED in accordance with the difference between
- * the current temperature and the previous measured temperature
+ * Turn green or red LED in accordance with the intensity of the change
+ * of the current temperature with respect to the previously measured temperature.
  */
-void turnLedsByTemperatureDifference(float tempDiff) {
-  float ledStrength = tempDiff * LED_LIGHT_CHANGE_SENSITIVITY;
-
-  if (ledStrength < 0) {
-  ledStrength*=-1.8;
-  }
-  
-  if (ledStrength > 255) {
-    ledStrength = 255;
-  }
-
-  if (tempDiff > 0) {
-    analogWrite(RED, ledStrength);
-    digitalWrite(GREEN, LOW);
-  }
-  else if (tempDiff < 0) 
-  {
-    analogWrite(GREEN, ledStrength);
-    digitalWrite(RED, LOW);
-  }
-  else 
-  {
-    digitalWrite(GREEN, LOW);
-    digitalWrite(RED, LOW);
-  }
-}
-
-/**
- * Measure the current temperature
- */
-float getCelciusTemperature() {
-  int Vo = analogRead(THERMISTOR_PIN);
-  float R2 = R1 * (1023.0 / (float)Vo - 1.0); // Calculate resistance on thermistor
-  float logR2 = log(R2);
-  float T = (1.0 / (c1 + c2 * logR2 + c3 * logR2 * logR2 * logR2)); // Temperature in Kelvin
-  T = T - 273.15; // convert Kelvin to Celsius
-
-  return T;
+void turnLedsWithDiffStrength(float difference, float strength) {
+	// Increase in temperature
+	if (tempDiff > 0) {
+		analogWrite(RED, ledStrength);
+		digitalWrite(GREEN, LOW);
+	}
+	
+	// Decrease in temperature
+	else if (tempDiff < 0) 
+	{
+		analogWrite(GREEN, ledStrength);
+		digitalWrite(RED, LOW);
+	}
+	
+	// No change in temperature
+	else 
+	{
+		digitalWrite(GREEN, LOW);
+		digitalWrite(RED, LOW);
+	}
 }
