@@ -10,8 +10,8 @@
 /* ******************************************************************************* */
 
 /**
-  *  Basic settings & pin Configuration  *
-										 */
+  *                    Basic settings & pin Configuration                          *
+										   */
 
 typedef unsigned int Uint;
 
@@ -50,8 +50,8 @@ bool isFarenheit = false;
 /* ******************************************************************************* */
 
 /**
- * Bit encodings of led patterns (Basic scheme, digits, temp symbols) *
-																	  */
+ *        Bit encodings of led patterns (Basic scheme, digits, temp symbols)       *
+									           */
 
 The number of each column on the matrix (the first 8 bits)
 bool cols[][8] = {
@@ -116,7 +116,7 @@ bool celsiusPattern[][8] = {
 /* ******************************************************************************* */
 
 /**
- * Arduino Basic functions - Setup & Loop *
+ *                     Arduino Basic functions - Setup & Loop                     *
 										  */
 
 void setup() {
@@ -189,7 +189,7 @@ void loop() {
 
 /**
  * Low level functions, implementing cummunication with MAX7219 LED Display Driver *
-																				   */
+								          	   */
 
 /**
  * Write 1 bit to the buffer.
@@ -211,8 +211,8 @@ void latchBuf() {
 /* ******************************************************************************* */
 
 /**
- * Matrix initialization and display functions *
-											   */
+ *                 Matrix initialization and display functions                     *
+										   */
 
 /**
  * Initialize matrix configuration.
@@ -266,8 +266,8 @@ void showScheme() {
 /* ******************************************************************************* */
 
 /**
- *  Manipulation of Patterns for displaying on the matrix *
-													      */
+ *              Manipulation of Patterns for displaying on the matrix              *
+								   	           */
 
 /**
  * Copy digit pattern from the digits array to the appropriate digit location 
@@ -345,8 +345,8 @@ void resetMiddleColsAndRows() {
 /* ******************************************************************************* */
 
 /**
- *  Temperature calculation & switching between unints(Celsius & Farenheit)*
-																		   */
+ *     Temperature calculation & switching between unints(Celsius & Farenheit)     *
+										   */
 													   
 /**
  * Measure the current temperature
@@ -397,8 +397,8 @@ void switchTemperatureUnit()
 /* ******************************************************************************* */
 
 /**
- *  Manipulation of LEDs according changes in temperature  *
-														   */
+ *                 Manipulation of LEDs according changes in temperature           *
+										   */
 /**
  * Calculate the intensity of the change between currently measured
  * temperature and previously measured temperature.
