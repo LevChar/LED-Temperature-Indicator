@@ -116,8 +116,8 @@ bool celsiusPattern[][8] = {
 /* ******************************************************************************* */
 
 /**
- *                     Arduino Basic functions - Setup & Loop                     *
-										  */
+ *                     Arduino Basic functions - Setup & Loop                      *
+										   */
 
 void setup() {
   pinMode(DIN, OUTPUT);
@@ -397,7 +397,7 @@ void switchTemperatureUnit()
 /* ******************************************************************************* */
 
 /**
- *                 Manipulation of LEDs according changes in temperature           *
+ *               Manipulation of LEDs according changes in temperature             *
 										   */
 /**
  * Calculate the intensity of the change between currently measured
